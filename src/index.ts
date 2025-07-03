@@ -1,7 +1,8 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
-import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+import slowDown from 'express-slow-down';
 import { PrismaClient, Report } from '../generated/prisma';
 
 // Initialize Express app and Prisma client
@@ -9,14 +10,99 @@ const app: Application = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(helmet());
-app.use(cors());
-app.use(morgan('combined'));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+// Rate limiting configurations
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: {
+    success: false,
+    error: 'Too many requests from this IP, please try again later.',
+    retryAfter: '15 minutes'
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  handler: (req: Request, res: Response) => {
+    console.log(`Rate limit exceeded for IP: ${req.ip}`);
+    res.status(429).json({
+      success: false,
+      error: 'Too many requests from this IP, please try again later.',
+      retryAfter: '15 minutes'
+    });
+  }
+});
 
-// Health check endpoint
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // only 10 requests per 15 minutes for POST endpoints
+  message: {
+    success: false,
+    error: 'Too many requests to this endpoint, please try again later.',
+    retryAfter: '15 minutes'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    console.log(`Strict rate limit exceeded for IP: ${req.ip} on ${req.path}`);
+    res.status(429).json({
+      success: false,
+      error: 'Too many requests to this endpoint, please try again later.',
+      retryAfter: '15 minutes'
+    });
+  }
+});
+
+const speedLimiter = slowDown({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  delayAfter: 5,
+  delayMs: (hits) => {
+    const delay = hits * 500;
+    console.log(`Request #${hits} - Adding ${delay}ms delay`);
+    return delay;
+  }
+});
+
+// Middleware setup
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
+app.use(morgan('combined'));
+
+// Apply rate limiting
+app.use(speedLimiter);
+app.use(generalLimiter);
+
+// Body parsing with different size limits for different endpoints
+app.use('/reports', express.json({ limit: '1mb' })); // 1MB limit for reports
+app.use('/health', express.json({ limit: '1kb' })); // Very small limit for health check
+app.use(express.json({ limit: '100kb' })); // Default smaller limit
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+
+// Request logging middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+  
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    console.log(`${req.method} ${req.path} - ${res.statusCode} - ${duration}ms - IP: ${req.ip}`);
+  });
+  
+  next();
+});
+
+// Health check endpoint (no additional rate limiting needed)
 app.get('/health', (req: Request, res: Response): void => {
   res.status(200).json({
     status: 'OK',
@@ -25,7 +111,7 @@ app.get('/health', (req: Request, res: Response): void => {
   });
 });
 
-// Get all reports
+// Get all reports with light rate limiting
 app.get('/reports', (req: Request, res: Response): void => {
   prisma.report.findMany({
     orderBy: {
@@ -48,41 +134,40 @@ app.get('/reports', (req: Request, res: Response): void => {
   });
 });
 
-// Create new report
-app.post('/reports', (req: Request, res: Response): void => {
-  const { content } = req.body;
-  
-  if (!content || typeof content !== 'string') {
-    res.status(400).json({
-      success: false,
-      error: 'Content is required and must be a string'
+// Create new report with strict rate limiting and validation
+app.post('/reports', 
+  strictLimiter, // Apply strict rate limiting
+  (req: Request, res: Response): void => {
+    const { content } = req.body;
+    
+    prisma.report.create({
+      data: {
+        content: Buffer.from(content.trim(), "utf-8")
+      }
+    })
+    .then(report => {
+      res.status(201).json({
+        success: true,
+        data: {
+          ...report,
+          content: content.trim() // Return the sanitized content
+        },
+        message: 'Report created successfully'
+      });
+    })
+    .catch(error => {
+      console.error('Error creating report:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create report'
+      });
     });
-    return;
   }
-  
-  prisma.report.create({
-    data: {
-      content: Buffer.from(content.trim(), "utf-8")
-    }
-  })
-  .then(report => {
-    res.status(201).json({
-      success: true,
-      data: report,
-      message: 'Report created successfully'
-    });
-  })
-  .catch(error => {
-    console.error('Error creating report:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create report'
-    });
-  });
-});
+);
 
 // 404 handler
 app.use((req: Request, res: Response): void => {
+  console.log(`404 - Route not found: ${req.method} ${req.path} - IP: ${req.ip}`);
   res.status(404).json({
     success: false,
     error: 'Route not found'
@@ -92,6 +177,23 @@ app.use((req: Request, res: Response): void => {
 // Global error handler
 app.use((error: Error, req: Request, res: Response, next: NextFunction): void => {
   console.error('Error:', error);
+  
+  // Handle specific error types
+  if (error.message.includes('request entity too large')) {
+    res.status(413).json({
+      success: false,
+      error: 'Request payload too large'
+    });
+    return
+  }
+  
+  if (error.message.includes('invalid json')) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid JSON format'
+    });
+    return
+  }
   
   res.status(500).json({
     success: false,
@@ -123,8 +225,8 @@ app.listen(PORT, (): void => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🗄️  Database: Connected via Prisma`);
+  console.log(`🛡️  Security: Rate limiting and request validation enabled`);
 });
-
 
 function getReportsWithStringContent(reports: Report[]) {
   return reports.map(report => ({...report, content: new TextDecoder().decode(report.content)}))
