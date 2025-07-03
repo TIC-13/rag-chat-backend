@@ -2,7 +2,7 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import { PrismaClient } from '../generated/prisma';
+import { PrismaClient, Report } from '../generated/prisma';
 
 // Initialize Express app and Prisma client
 const app: Application = express();
@@ -35,7 +35,7 @@ app.get('/reports', (req: Request, res: Response): void => {
   .then(reports => {
     res.status(200).json({
       success: true,
-      data: reports,
+      data: getReportsWithStringContent(reports),
       count: reports.length
     });
   })
@@ -62,7 +62,7 @@ app.post('/reports', (req: Request, res: Response): void => {
   
   prisma.report.create({
     data: {
-      content: content.trim()
+      content: Buffer.from(content.trim(), "utf-8")
     }
   })
   .then(report => {
@@ -124,5 +124,10 @@ app.listen(PORT, (): void => {
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🗄️  Database: Connected via Prisma`);
 });
+
+
+function getReportsWithStringContent(reports: Report[]) {
+  return reports.map(report => ({...report, content: new TextDecoder().decode(report.content)}))
+}
 
 export default app;

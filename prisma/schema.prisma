@@ -15,7 +15,7 @@ datasource db {
 }
 
 model Report {
-  id      Int    @id @default(autoincrement())
-  content String
-  createdAt DateTime @default(now())
+  id         Int    @id @default(autoincrement())
+  content    Bytes
+  createdAt  DateTime @default(now())
 }

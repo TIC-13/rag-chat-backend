@@ -1,4 +1,4 @@
-# 📦 Report Storage API
+# 📦 Backend for LuxAI Chat
 
 Backend for the app [LuxAI Chat](https://github.com/TIC-13/rag-chat). Right now, it only stores reported conversations sent by the users.
 
@@ -37,7 +37,7 @@ Backend for the app [LuxAI Chat](https://github.com/TIC-13/rag-chat). Right now,
 4. **Initialize Prisma & DB**:
 
    ```bash
-   npx prisma migrate deploy
+   npx prisma migrate dev
    npx prisma generate
    ```
 
