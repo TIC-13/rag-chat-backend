@@ -47,6 +47,9 @@ Backend for the app [LuxAI Chat](https://github.com/TIC-13/rag-chat). Right now,
    yarn dev
    ```
 
+6. **(Optional) Deploy for production using pm2**
+   If you want to run the application using `pm2` there's a bash script called `deploy_pm2.sh` that does just that. 
+
 ---
 
 ## 📮 API Endpoints
