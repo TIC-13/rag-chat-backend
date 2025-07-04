@@ -3,7 +3,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import slowDown from 'express-slow-down';
-import { PrismaClient, Report } from '../generated/prisma';
+import { PrismaClient, report } from '../generated/prisma';
 
 // Initialize Express app and Prisma client
 const app: Application = express();
@@ -228,7 +228,7 @@ app.listen(PORT, (): void => {
   console.log(`🛡️  Security: Rate limiting and request validation enabled`);
 });
 
-function getReportsWithStringContent(reports: Report[]) {
+function getReportsWithStringContent(reports: report[]) {
   return reports.map(report => ({...report, content: new TextDecoder().decode(report.content)}))
 }
 

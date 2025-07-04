@@ -14,7 +14,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Report {
+model report {
   id         Int    @id @default(autoincrement())
   content    Bytes
   createdAt  DateTime @default(now())
