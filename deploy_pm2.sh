@@ -42,6 +42,9 @@ module.exports = {
 };
 EOF
 
+echo "Pulling latest changes from Git..."
+git pull
+
 echo "Installing dependencies..."
 yarn install
 
