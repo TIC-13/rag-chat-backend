@@ -8,7 +8,7 @@ import { PrismaClient, report } from '../generated/prisma';
 // Initialize Express app and Prisma client
 const app: Application = express();
 const prisma = new PrismaClient();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 80;
 
 // Rate limiting configurations
 const generalLimiter = rateLimit({
