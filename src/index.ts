@@ -1,3 +1,5 @@
+require('dotenv').config({debug: true});
+
 import express, { Application, Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
