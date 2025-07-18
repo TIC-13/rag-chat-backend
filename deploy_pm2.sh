@@ -43,6 +43,7 @@ module.exports = {
 EOF
 
 echo "Pulling latest changes from Git..."
+git checkout main
 git pull
 
 echo "Installing dependencies..."
